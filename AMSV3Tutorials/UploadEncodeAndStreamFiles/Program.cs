@@ -16,13 +16,14 @@ namespace UploadEncodeAndStreamFiles
 {
     public class Program
     {
-        private const string AdaptiveStreamingTransformName = "MyTransformWithAdaptiveStreamingPreset";
-        private const string InputMP4FileName = @"ignite.mp4";
+        private const string AdaptiveStreamingTransformName = "polluxmediaservicesencodingtransform";
+        private const string InputMP4FileName = @"ingnite.mp4";
+        private const string InputMP4FilePath = @"./ingnite.mp4";
         private const string OutputFolderName = @"Output";
 
         public static async Task Main(string[] args)
         {
-            ConfigWrapper config = new ConfigWrapper(new ConfigurationBuilder()
+            AzureMediaServiceConfig config = new AzureMediaServiceConfig(new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
                 .AddEnvironmentVariables()
@@ -52,56 +53,59 @@ namespace UploadEncodeAndStreamFiles
             Console.ReadLine();
         }
 
+
         /// <summary>
         /// Run the sample async.
         /// </summary>
-        /// <param name="config">The parm is of type ConfigWrapper. This class reads values from local configuration file.</param>
+        /// <param name="amsConfig">The parm is of type ConfigWrapper. This class reads values from local configuration file.</param>
         /// <returns></returns>
         // <RunAsync>
-        private static async Task RunAsync(ConfigWrapper config)
+        private static async Task RunAsync(AzureMediaServiceConfig amsConfig)
         {
-            IAzureMediaServicesClient client = await CreateMediaServicesClientAsync(config);
+            Console.WriteLine("starting creating assents.");
+            IAzureMediaServicesClient azureMediaServiceClient = await CreateMediaServicesClientAsync(amsConfig);
 
             // Set the polling interval for long running operations to 2 seconds.
             // The default value is 30 seconds for the .NET client SDK
-            client.LongRunningOperationRetryTimeout = 2;
+            azureMediaServiceClient.LongRunningOperationRetryTimeout = 2;
 
             // Creating a unique suffix so that we don't have name collisions if you run the sample
             // multiple times without cleaning up.
-            string uniqueness = Guid.NewGuid().ToString("N");
-            string jobName = $"job-{uniqueness}";
-            string locatorName = $"locator-{uniqueness}";
-            string outputAssetName = $"output-{uniqueness}";
-            string inputAssetName = $"input-{uniqueness}";
+            string uniqueAssetName = "ignition";
+            string jobName = $"{uniqueAssetName}-job";
+            string locatorName = $"{uniqueAssetName}-locator";
+            string outputAssetName = $"{uniqueAssetName}-output";
+            string inputAssetName = $"{uniqueAssetName}-input";
 
             // Ensure that you have the desired encoding Transform. This is really a one time setup operation.
-            _ = await GetOrCreateTransformAsync(client, config.ResourceGroup, config.AccountName, AdaptiveStreamingTransformName);
+            var transform = await GetOrCreateTransformAsync(azureMediaServiceClient, amsConfig);
 
             // Create a new input Asset and upload the specified local video file into it.
-            _ = await CreateInputAssetAsync(client, config.ResourceGroup, config.AccountName, inputAssetName, InputMP4FileName);
+            var inputAsset = await CreateInputAssetAsync(azureMediaServiceClient, amsConfig, uniqueAssetName, InputMP4FileName);
 
             // Use the name of the created input asset to create the job input.
             _ = new JobInputAsset(assetName: inputAssetName);
 
             // Output from the encoding Job must be written to an Asset, so let's create one
-            Asset outputAsset = await CreateOutputAssetAsync(client, config.ResourceGroup, config.AccountName, outputAssetName);
+            var outputAsset = await CreateOutputAssetAsync(azureMediaServiceClient, amsConfig, outputAssetName);
 
-            _ = await SubmitJobAsync(client, config.ResourceGroup, config.AccountName, AdaptiveStreamingTransformName, jobName, inputAssetName, outputAsset.Name);
+            _ = await SubmitJobAsync(azureMediaServiceClient, amsConfig, jobName, inputAssetName, outputAssetName);
+
             // In this demo code, we will poll for Job status
             // Polling is not a recommended best practice for production applications because of the latency it introduces.
-            // Overuse of this API may trigger throttling. Developers should instead use Event Grid.
-            Job job = await WaitForJobToFinishAsync(client, config.ResourceGroup, config.AccountName, AdaptiveStreamingTransformName, jobName);
+            //// Overuse of this API may trigger throttling. Developers should instead use Event Grid.
+            Job job = await WaitForJobToFinishAsync(azureMediaServiceClient, amsConfig, jobName);
 
             if (job.State == JobState.Finished)
             {
-                Console.WriteLine("Job finished.");
-                if (!Directory.Exists(OutputFolderName))
-                    Directory.CreateDirectory(OutputFolderName);
+                //  Console.WriteLine("Job finished.");
+                //if (!Directory.Exists(OutputFolderName))
+                //   Directory.CreateDirectory(OutputFolderName);
 
-                await DownloadOutputAssetAsync(client, config.ResourceGroup, config.AccountName, outputAsset.Name, OutputFolderName);
+                //await DownloadOutputAssetAsync(client, config.ResourceGroup, config.AccountName, outputAsset.Name, OutputFolderName);
 
-                StreamingLocator locator = await CreateStreamingLocatorAsync(client, config.ResourceGroup, config.AccountName, outputAsset.Name, locatorName);
-                
+                StreamingLocator locator = await CreateStreamingLocatorAsync(azureMediaServiceClient, amsConfig, outputAssetName, locatorName);
+
                 // Note that the URLs returned by this method include a /manifest path followed by a (format=)
                 // parameter that controls the type of manifest that is returned. 
                 // The /manifest(format=m3u8-aapl) will provide Apple HLS v4 manifest using MPEG TS segments.
@@ -109,16 +113,18 @@ namespace UploadEncodeAndStreamFiles
                 // And using just /manifest alone will return Microsoft Smooth Streaming format.
                 // There are additional formats available that are not returned in this call, please check the documentation
                 // on the dynamic packager for additional formats - see https://docs.microsoft.com/azure/media-services/latest/dynamic-packaging-overview
-                IList<string> urls = await GetStreamingUrlsAsync(client, config.ResourceGroup, config.AccountName, locator.Name);
+                IList<string> urls = await GetStreamingUrlsAsync(azureMediaServiceClient, amsConfig.ResourceGroup, amsConfig.AccountName, locator.Name);
                 foreach (var url in urls)
                 {
                     Console.WriteLine(url);
                 }
+
+
+                Console.WriteLine("Done. Copy and paste the Streaming URL ending in '/manifest' into the Azure Media Player at 'http://aka.ms/azuremediaplayer'.");
+                Console.WriteLine("See the documentation on Dynamic Packaging for additional format support, including CMAF.");
+                Console.WriteLine("https://docs.microsoft.com/azure/media-services/latest/dynamic-packaging-overview");
             }
 
-            Console.WriteLine("Done. Copy and paste the Streaming URL ending in '/manifest' into the Azure Media Player at 'http://aka.ms/azuremediaplayer'.");
-            Console.WriteLine("See the documentation on Dynamic Packaging for additional format support, including CMAF.");
-            Console.WriteLine("https://docs.microsoft.com/azure/media-services/latest/dynamic-packaging-overview");    
         }
         // </RunAsync>
 
@@ -129,7 +135,7 @@ namespace UploadEncodeAndStreamFiles
         /// <param name="config">The parm is of type ConfigWrapper. This class reads values from local configuration file.</param>
         /// <returns></returns>
         // <GetCredentialsAsync>
-        private static async Task<ServiceClientCredentials> GetCredentialsAsync(ConfigWrapper config)
+        private static async Task<ServiceClientCredentials> GetCredentialsAsync(AzureMediaServiceConfig config)
         {
             // Use ApplicationTokenProvider.LoginSilentWithCertificateAsync or UserTokenProvider.LoginSilentAsync to get a token using service principal with certificate
             //// ClientAssertionCertificate
@@ -148,7 +154,7 @@ namespace UploadEncodeAndStreamFiles
         /// <param name="config">The parm is of type ConfigWrapper. This class reads values from local configuration file.</param>
         /// <returns></returns>
         // <CreateMediaServicesClient>
-        private static async Task<IAzureMediaServicesClient> CreateMediaServicesClientAsync(ConfigWrapper config)
+        private static async Task<IAzureMediaServicesClient> CreateMediaServicesClientAsync(AzureMediaServiceConfig config)
         {
             var credentials = await GetCredentialsAsync(config);
 
@@ -171,8 +177,7 @@ namespace UploadEncodeAndStreamFiles
         // <CreateInputAsset>
         private static async Task<Asset> CreateInputAssetAsync(
             IAzureMediaServicesClient client,
-            string resourceGroupName,
-            string accountName,
+            AzureMediaServiceConfig amsConfig,
             string assetName,
             string fileToUpload)
         {
@@ -185,15 +190,15 @@ namespace UploadEncodeAndStreamFiles
             // Call Media Services API to create an Asset.
             // This method creates a container in storage for the Asset.
             // The files (blobs) associated with the asset will be stored in this container.
-            Asset asset = await client.Assets.CreateOrUpdateAsync(resourceGroupName, accountName, assetName, new Asset());
+            Asset asset = await client.Assets.CreateOrUpdateAsync(amsConfig.ResourceGroup, amsConfig.AccountName, assetName, new Asset());
 
             // Use Media Services API to get back a response that contains
             // SAS URL for the Asset container into which to upload blobs.
             // That is where you would specify read-write permissions 
             // and the exparation time for the SAS URL.
             var response = await client.Assets.ListContainerSasAsync(
-                resourceGroupName,
-                accountName,
+                amsConfig.ResourceGroup,
+                amsConfig.AccountName,
                 assetName,
                 permissions: AssetContainerPermission.ReadWrite,
                 expiryTime: DateTime.UtcNow.AddHours(4).ToUniversalTime());
@@ -206,7 +211,13 @@ namespace UploadEncodeAndStreamFiles
             BlobClient blob = container.GetBlobClient(Path.GetFileName(fileToUpload));
 
             // Use Strorage API to upload the file into the container in storage.
-            await blob.UploadAsync(fileToUpload);
+            if (File.Exists(InputMP4FilePath))
+            {
+                var file = File.ReadAllBytes(InputMP4FileName);
+                var stream = new MemoryStream(file);
+                await blob.UploadAsync(stream);
+            }
+
 
             return asset;
         }
@@ -218,29 +229,24 @@ namespace UploadEncodeAndStreamFiles
         /// <param name="client">The Media Services client.</param>
         /// <param name="resourceGroupName">The name of the resource group within the Azure subscription.</param>
         /// <param name="accountName"> The Media Services account name.</param>
-        /// <param name="assetName">The output asset name.</param>
+        /// <param name="outputAssetName">The output asset name.</param>
         /// <returns></returns>
         // <CreateOutputAsset>
-        private static async Task<Asset> CreateOutputAssetAsync(IAzureMediaServicesClient client, string resourceGroupName, string accountName, string assetName)
+        private static async Task<Asset> CreateOutputAssetAsync(
+            IAzureMediaServicesClient client,
+            AzureMediaServiceConfig amsConfig,
+            string outputAssetName)
         {
             // Check if an Asset already exists
-            Asset outputAsset = await client.Assets.GetAsync(resourceGroupName, accountName, assetName);
-            Asset asset = new Asset();
-            string outputAssetName = assetName;
+            Asset inputAsset = await client.Assets.GetAsync(amsConfig.ResourceGroup, amsConfig.AccountName, outputAssetName);
+            Asset outputAsset = new Asset();
 
-            if (outputAsset != null)
+            if (inputAsset != null)
             {
-                // Name collision! In order to get the sample to work, let's just go ahead and create a unique asset name
-                // Note that the returned Asset can have a different name than the one specified as an input parameter.
-                // You may want to update this part to throw an Exception instead, and handle name collisions differently.
-                string uniqueness = $"-{Guid.NewGuid():N}";
-                outputAssetName += uniqueness;
-
-                Console.WriteLine("Warning – found an existing Asset with name = " + assetName);
-                Console.WriteLine("Creating an Asset with this name instead: " + outputAssetName);
+                throw new ArgumentException("the output asset name already exists", outputAssetName);
             }
 
-            return await client.Assets.CreateOrUpdateAsync(resourceGroupName, accountName, outputAssetName, asset);
+            return await client.Assets.CreateOrUpdateAsync(amsConfig.ResourceGroup, amsConfig.AccountName, outputAssetName, outputAsset);
         }
         // </CreateOutputAsset>
 
@@ -249,41 +255,24 @@ namespace UploadEncodeAndStreamFiles
         /// If the it does not exist, creates a new transform with the specified output. 
         /// In this case, the output is set to encode a video using one of the built-in encoding presets.
         /// </summary>
-        /// <param name="client">The Media Services client.</param>
+        /// <param name="azureMediaServiceClient">The Media Services client.</param>
         /// <param name="resourceGroupName">The name of the resource group within the Azure subscription.</param>
         /// <param name="accountName"> The Media Services account name.</param>
         /// <param name="transformName">The name of the transform.</param>
         /// <returns></returns>
         // <EnsureTransformExists>
         private static async Task<Transform> GetOrCreateTransformAsync(
-            IAzureMediaServicesClient client,
-            string resourceGroupName,
-            string accountName,
-            string transformName)
+            IAzureMediaServicesClient azureMediaServiceClient,
+            AzureMediaServiceConfig azureMediaServiceConfig)
         {
             // Does a Transform already exist with the desired name? Assume that an existing Transform with the desired name
             // also uses the same recipe or Preset for processing content.
-            Transform transform = await client.Transforms.GetAsync(resourceGroupName, accountName, transformName);
+            Transform transform = await azureMediaServiceClient.Transforms.
+                GetAsync(azureMediaServiceConfig.ResourceGroup, azureMediaServiceConfig.AccountName, AdaptiveStreamingTransformName);
 
             if (transform == null)
             {
-                // You need to specify what you want it to produce as an output
-                TransformOutput[] output = new TransformOutput[]
-                {
-                    new TransformOutput
-                    {
-                        // The preset for the Transform is set to one of Media Services built-in sample presets.
-                        // You can  customize the encoding settings by changing this to use "StandardEncoderPreset" class.
-                        Preset = new BuiltInStandardEncoderPreset()
-                        {
-                            // This sample uses the built-in encoding preset for Adaptive Bitrate Streaming.
-                            PresetName = EncoderNamedPreset.AdaptiveStreaming
-                        }
-                    }
-                };
-
-                // Create the Transform with the output defined above
-                transform = await client.Transforms.CreateOrUpdateAsync(resourceGroupName, accountName, transformName, output);
+                throw new ArgumentException("could not find the specific transformer ", AdaptiveStreamingTransformName);
             }
 
             return transform;
@@ -301,10 +290,9 @@ namespace UploadEncodeAndStreamFiles
         /// <param name="inputAssetName">The name of the input asset.</param>
         /// <param name="outputAssetName">The (unique) name of the  output asset that will store the result of the encoding job. </param>
         // <SubmitJob>
-        private static async Task<Job> SubmitJobAsync(IAzureMediaServicesClient client,
-            string resourceGroupName,
-            string accountName,
-            string transformName,
+        private static async Task<Job> SubmitJobAsync(
+            IAzureMediaServicesClient client,
+            AzureMediaServiceConfig amsConfig,
             string jobName,
             string inputAssetName,
             string outputAssetName)
@@ -314,7 +302,7 @@ namespace UploadEncodeAndStreamFiles
 
             JobOutput[] jobOutputs =
             {
-                new JobOutputAsset(outputAssetName),
+                 new JobOutputAsset(outputAssetName),
             };
 
             // In this example, we are assuming that the job name is unique.
@@ -323,9 +311,9 @@ namespace UploadEncodeAndStreamFiles
             // to get the existing job. In Media Services v3, the Get method on entities returns null 
             // if the entity doesn't exist (a case-insensitive check on the name).
             Job job = await client.Jobs.CreateAsync(
-                resourceGroupName,
-                accountName,
-                transformName,
+                amsConfig.ResourceGroup,
+                amsConfig.AccountName,
+                AdaptiveStreamingTransformName,
                 jobName,
                 new Job
                 {
@@ -347,10 +335,9 @@ namespace UploadEncodeAndStreamFiles
         /// <param name="jobName">The name of the job you submitted.</param>
         /// <returns></returns>
         // <WaitForJobToFinish>
-        private static async Task<Job> WaitForJobToFinishAsync(IAzureMediaServicesClient client,
-            string resourceGroupName,
-            string accountName,
-            string transformName,
+        private static async Task<Job> WaitForJobToFinishAsync(
+            IAzureMediaServicesClient client,
+            AzureMediaServiceConfig amsConfig,
             string jobName)
         {
             const int SleepIntervalMs = 20 * 1000;
@@ -358,7 +345,7 @@ namespace UploadEncodeAndStreamFiles
             Job job;
             do
             {
-                job = await client.Jobs.GetAsync(resourceGroupName, accountName, transformName, jobName);
+                job = await client.Jobs.GetAsync(amsConfig.ResourceGroup, amsConfig.AccountName, AdaptiveStreamingTransformName, jobName);
 
                 Console.WriteLine($"Job is '{job.State}'.");
                 for (int i = 0; i < job.Outputs.Count; i++)
@@ -397,14 +384,13 @@ namespace UploadEncodeAndStreamFiles
         // <CreateStreamingLocator>
         private static async Task<StreamingLocator> CreateStreamingLocatorAsync(
             IAzureMediaServicesClient client,
-            string resourceGroup,
-            string accountName,
+            AzureMediaServiceConfig amsConfig,
             string assetName,
             string locatorName)
         {
             StreamingLocator locator = await client.StreamingLocators.CreateAsync(
-                resourceGroup,
-                accountName,
+                amsConfig.ResourceGroup,
+                amsConfig.AccountName,
                 locatorName,
                 new StreamingLocator
                 {
@@ -566,6 +552,7 @@ namespace UploadEncodeAndStreamFiles
             }
         }
         // </CleanUp>
+
 
     }
 }

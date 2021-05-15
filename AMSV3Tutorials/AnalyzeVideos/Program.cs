@@ -17,7 +17,7 @@ namespace AnalyzeVideos
     class Program
     {
         private const string VideoAnalyzerTransformName = "MyVideoAnalyzerTransformName";
-        private const string InputMP4FileName = @"ignite.mp4";
+        private const string InputMP4FileName = @"moon.mp4";
         private const string OutputFolderName = @"Output";
 
         public static async Task Main(string[] args)
@@ -96,23 +96,24 @@ namespace AnalyzeVideos
             // In this demo code, we will poll for Job status
             // Polling is not a recommended best practice for production applications because of the latency it introduces.
             // Overuse of this API may trigger throttling. Developers should instead use Event Grid.
-            Job job = await WaitForJobToFinishAsync(client, config.ResourceGroup, config.AccountName, VideoAnalyzerTransformName, jobName);
+            // Job job = await WaitForJobToFinishAsync(client, config.ResourceGroup, config.AccountName, VideoAnalyzerTransformName, jobName);
 
-            if (job.State == JobState.Finished)
-            {
-                Console.WriteLine("Job finished.");
-                if (!Directory.Exists(OutputFolderName))
-                    Directory.CreateDirectory(OutputFolderName);
+            await DownloadOutputAssetAsync(client, config.ResourceGroup, config.AccountName, outputAsset.Name, OutputFolderName);
 
-                await DownloadOutputAssetAsync(client, config.ResourceGroup, config.AccountName, outputAsset.Name, OutputFolderName);
-            }
+            //if (job.State == JobState.Finished)
+            //{
+            //    Console.WriteLine("Job finished.");
+            //    if (!Directory.Exists(OutputFolderName))
+            //        Directory.CreateDirectory(OutputFolderName);
+
+            //}
 
             Console.WriteLine("Done.");
             Console.WriteLine("When finished press enter to cleanup.");
             Console.Out.Flush();
             Console.ReadLine();
             Console.WriteLine("Cleaning up...");
-            await CleanUpAsync(client, config.ResourceGroup, config.AccountName, VideoAnalyzerTransformName, job.Name, new List<string> { outputAsset.Name }, null);
+            //await CleanUpAsync(client, config.ResourceGroup, config.AccountName, VideoAnalyzerTransformName, job.Name, new List<string> { outputAsset.Name }, null);
         }
         // </RunAsync>
 

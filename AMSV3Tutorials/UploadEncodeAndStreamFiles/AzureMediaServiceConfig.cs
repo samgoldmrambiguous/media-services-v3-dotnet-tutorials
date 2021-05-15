@@ -4,11 +4,11 @@ using Microsoft.Extensions.Configuration;
 
 namespace UploadEncodeAndStreamFiles
 {
-    public class ConfigWrapper
+    public class AzureMediaServiceConfig
     {
         private readonly IConfiguration _config;
 
-        public ConfigWrapper(IConfiguration config)
+        public AzureMediaServiceConfig(IConfiguration config)
         {
             _config = config;
         }
