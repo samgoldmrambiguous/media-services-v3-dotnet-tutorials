@@ -17,8 +17,8 @@ namespace UploadEncodeAndStreamFiles
     public class Program
     {
         private const string AdaptiveStreamingTransformName = "polluxmediaservicesencodingtransform";
-        private const string InputMP4FileName = @"ingnite.mp4";
-        private const string InputMP4FilePath = @"./ingnite.mp4";
+        private const string InputMP4FileName = @"moon.mp4";
+        private const string InputMP4FilePath = @"./moon.mp4";
         private const string OutputFolderName = @"Output";
 
         public static async Task Main(string[] args)
@@ -71,7 +71,7 @@ namespace UploadEncodeAndStreamFiles
 
             // Creating a unique suffix so that we don't have name collisions if you run the sample
             // multiple times without cleaning up.
-            string uniqueAssetName = "ignition";
+            string uniqueAssetName = "moon";
             string jobName = $"{uniqueAssetName}-job";
             string locatorName = $"{uniqueAssetName}-locator";
             string outputAssetName = $"{uniqueAssetName}-output";
@@ -81,7 +81,7 @@ namespace UploadEncodeAndStreamFiles
             var transform = await GetOrCreateTransformAsync(azureMediaServiceClient, amsConfig);
 
             // Create a new input Asset and upload the specified local video file into it.
-            var inputAsset = await CreateInputAssetAsync(azureMediaServiceClient, amsConfig, uniqueAssetName, InputMP4FileName);
+            var inputAsset = await CreateInputAssetAsync(azureMediaServiceClient, amsConfig, inputAssetName, InputMP4FileName);
 
             // Use the name of the created input asset to create the job input.
             _ = new JobInputAsset(assetName: inputAssetName);
@@ -211,14 +211,13 @@ namespace UploadEncodeAndStreamFiles
             BlobClient blob = container.GetBlobClient(Path.GetFileName(fileToUpload));
 
             // Use Strorage API to upload the file into the container in storage.
-            if (File.Exists(InputMP4FilePath))
-            {
-                var file = File.ReadAllBytes(InputMP4FileName);
-                var stream = new MemoryStream(file);
-                await blob.UploadAsync(stream);
-            }
+            if (!File.Exists(InputMP4FilePath)) throw new FileNotFoundException();
 
-
+            var file = File.ReadAllBytes(InputMP4FileName);
+            var stream = new MemoryStream(file);
+            Console.WriteLine("starting uploading " + assetName);
+            blob.Upload(stream);
+            Console.WriteLine("finished uploading " + assetName);
             return asset;
         }
         // </CreateInputAsset>
